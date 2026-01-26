@@ -1,150 +1,119 @@
 const express = require('express');
-const { exec } = require('child_process');
+const { spawn } = require('child_process');
 const util = require('util');
 const fs = require('fs').promises;
+const fsSync = require('fs'); // We need sync fs for existsSync checks if needed
 const path = require('path');
 const cors = require('cors');
 
-const execPromise = util.promisify(exec);
 const app = express();
 const PORT = 3001;
 
 app.use(cors());
 app.use(express.json());
 
-// Endpoint to run Semgrep scan
+// --- CRITICAL HELPER: Fix Windows paths for Docker ---
+// Converts "C:\Users\..." to "C:/Users/..." so Docker doesn't get confused
+const cleanPath = (p) => {
+    return path.resolve(p).replace(/\\/g, '/');
+};
+
 app.post('/api/scan', async (req, res) => {
-  const { 
-    repoUrl, 
-    gitUsername, 
-    gitToken, 
-    semgrepToken,
-    branch = 'main'
-  } = req.body;
+    const { repoUrl, branch = 'main' } = req.body;
 
-  if (!repoUrl || !semgrepToken) {
-    return res.status(400).json({ 
-      error: 'Repository URL and Semgrep token are required' 
-    });
-  }
-
-  const scanId = Date.now().toString();
-  const workDir = path.join(__dirname, 'scans', scanId);
-  const reportsDir = path.join(workDir, 'reports');
-
-  try {
-    // Create working directories
-    await fs.mkdir(reportsDir, { recursive: true });
-
-    // Build authenticated repo URL if credentials provided
-    let authRepoUrl = repoUrl;
-    if (gitUsername && gitToken) {
-      const url = new URL(repoUrl);
-      authRepoUrl = `${url.protocol}//${gitUsername}:${gitToken}@${url.host}${url.pathname}`;
+    if (!repoUrl) {
+        return res.status(400).json({ error: 'Repository URL is required' });
     }
 
-    // Clone repository
-    console.log(`Cloning repository: ${repoUrl}`);
-    await execPromise(`git clone --depth 1 --branch ${branch} ${authRepoUrl} repo`, {
-      cwd: workDir,
-      timeout: 120000
-    });
-
+    // Generate unique ID for this scan
+    const scanId = Date.now().toString();
+    const workDir = path.join(__dirname, 'scans', scanId);
     const repoPath = path.join(workDir, 'repo');
+    const reportsDir = path.join(workDir, 'reports');
 
-    // Pull Semgrep Docker image
-    console.log('Pulling Semgrep Docker image...');
-    await execPromise('docker pull semgrep/semgrep:latest');
+    console.log(`[${scanId}] Starting scan for ${repoUrl}`);
 
-    // Run Semgrep scan
-    console.log('Running Semgrep scan...');
+    try {
+        // 1. Create Directories
+        await fs.mkdir(reportsDir, { recursive: true });
 
-    const textCmd = `
-        docker run --rm ^
-        -v "${repoPath}:/src" ^
-        -v "${reportsDir}:/reports" ^
-        -w /src ^
-        semgrep/semgrep ^
-        semgrep scan --config auto --output /reports/semgrep-report.json`;
+        // 2. Clone Repository
+        console.log(`[${scanId}] Cloning...`);
+        
+        // We wrap spawn in a Promise so we can "await" it
+        await new Promise((resolve, reject) => {
+            const git = spawn('git', ['clone', '--depth', '1', '--branch', branch, repoUrl, repoPath], { shell: true });
+            git.on('close', (code) => {
+                if (code === 0) resolve();
+                else reject(new Error(`Git clone failed with code ${code}`));
+            });
+        });
 
-    await execPromise(textCmd, { timeout: 300000 });
-    res.json({ success: true, scanId });
+        // 3. Prepare Docker Command (Exact match to your working debug script)
+        const srcPath = cleanPath(repoPath);
+        const reportPath = cleanPath(reportsDir);
 
+        console.log(`[${scanId}] Running Semgrep Docker...`);
+        const dockerArgs = [
+            'run', '--rm',
+            '-v', `${srcPath}:/src`,
+            '-v', `${reportPath}:/reports`,
+            'semgrep/semgrep',
+            'semgrep', 'scan',
+            '--config', 'p/security-audit', // The config that worked for you
+            '--json',
+            '--output', '/reports/report.json',
+            '--verbose'
+        ];
 
-    // Read reports
-//     let jsonReport = null;
-//     let textReport = null;
+        // 4. Execute Docker
+        await new Promise((resolve, reject) => {
+            const docker = spawn('docker', dockerArgs, { shell: true });
+            
+            // Log output to server console for debugging
+            docker.stdout.on('data', (d) => console.log(`[Docker]: ${d.toString().trim()}`));
+            docker.stderr.on('data', (d) => console.error(`[Docker Err]: ${d.toString().trim()}`));
 
-//     try {
-//       const jsonContent = await fs.readFile(
-//         path.join(reportsDir, 'semgrep-report.json'), 
-//         'utf-8'
-//       );
-//       jsonReport = JSON.parse(jsonContent);
-//     } catch (err) {
-//       console.error('Error reading JSON report:', err.message);
-//     }
+            docker.on('close', (code) => {
+                if (code === 0) resolve();
+                else reject(new Error(`Docker exited with code ${code}`));
+            });
+        });
 
-//     try {
-//       textReport = await fs.readFile(
-//         path.join(reportsDir, 'semgrep-report.txt'), 
-//         'utf-8'
-//       );
-//     } catch (err) {
-//       console.error('Error reading text report:', err.message);
-//     }
+        // 5. Read the Results
+        const reportFile = path.join(reportsDir, 'report.json');
+        
+        // Verify file exists
+        try {
+            await fs.access(reportFile);
+        } catch (e) {
+            throw new Error('Scan finished but no report file was found.');
+        }
 
-//     // Cleanup
-//     await execPromise(`rm -rf ${workDir}`);
+        const reportData = await fs.readFile(reportFile, 'utf8');
+        const jsonResult = JSON.parse(reportData);
 
-//     res.json({
-//       success: true,
-//       scanId,
-//       reports: {
-//         json: jsonReport,
-//         text: textReport
-//       },
-//       summary: jsonReport ? {
-//         totalFindings: jsonReport.results?.length || 0,
-//         errors: jsonReport.errors?.length || 0
-//       } : null
-//     });
+        console.log(`[${scanId}] Success! Found ${jsonResult.results.length} issues.`);
 
-   } catch (error) {
-     console.error('Scan error:', error);
-    
-//     // Cleanup on error
-//     try {
-//       await execPromise(`rm -rf ${workDir}`);
-//     } catch (cleanupErr) {
-//       console.error('Cleanup error:', cleanupErr);
-//     }
+        // 6. Send to Frontend
+        res.json({
+            success: true,
+            scanId: scanId,
+            timestamp: new Date(),
+            repoUrl: repoUrl,
+            findingsCount: jsonResult.results.length,
+            results: jsonResult.results // <--- This is the array your frontend needs
+        });
 
-    res.status(500).json({ 
-      error: 'Scan failed', 
-      details: error.message 
-    });
+    } catch (error) {
+        console.error(`[${scanId}] Failed:`, error);
+        res.status(500).json({ 
+            error: 'Scan failed', 
+            details: error.message 
+        });
     }
-});
-
-// Download report endpoint
-app.get('/api/download/:scanId/:format', async (req, res) => {
-  const { scanId, format } = req.params;
-  const reportsDir = path.join(__dirname, 'scans', scanId, 'reports');
-  const filename = format === 'json' 
-    ? 'semgrep-report.json' 
-    : 'semgrep-report.txt';
-  
-  const filePath = path.join(reportsDir, filename);
-
-  try {
-    await fs.access(filePath);
-    res.download(filePath, filename);
-  } catch (error) {
-    res.status(404).json({ error: 'Report not found' });
-  }
 });
 
 app.listen(PORT, () => {
-  console.log(`Semgrep Scanner API running on port ${PORT}`);
+    console.log(`Semgrep API ready on http://localhost:${PORT}`);
 });
