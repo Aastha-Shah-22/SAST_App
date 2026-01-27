@@ -9,7 +9,7 @@ const app = express();
 
 app.use(express.json());
 
-app.post('/api/scan', async (req, res) => {
+app.post('/api/scan/sast', async (req, res) => {
   const { repoUrl, gitUsername, gitToken, semgrepToken, branch = 'main' } = req.body;
 
   if (!repoUrl || !semgrepToken) {
@@ -68,6 +68,7 @@ app.post('/api/scan', async (req, res) => {
     // 4. Read and Parse
     const jsonContent = await fs.readFile(path.join(reportsDir, reportFile), 'utf-8');
     const jsonReport = JSON.parse(jsonContent);
+    console.log(jsonReport);
 
     res.json({
       success: true,
@@ -88,8 +89,82 @@ app.post('/api/scan', async (req, res) => {
     });
   }
   finally {
-    // Optional: Clean up the working directory after scan
      await fs.rm(repoPath, { recursive: true });
+  }
+});
+
+app.post('/api/scan/container', async (req, res) => {
+  const { imageName } = req.body;
+
+  if (!imageName) {
+    return res.status(400).json({ error: 'Image name (e.g., "alpine:latest") is required' });
+  }
+
+  const scanId = Date.now().toString();
+  const workDir = path.resolve(__dirname, 'scans', `trivy-${scanId}`);
+  const reportsDir = path.join(workDir, 'reports');
+  const reportFile = 'trivy-report.json';
+  const reportPath = path.join(reportsDir, reportFile);
+
+  try {
+    // 1. Create directory for the report
+    await fs.mkdir(reportsDir, { recursive: true });
+
+    console.log(`Starting Trivy scan for image: ${imageName}`);
+
+    /**
+     * 2. Trivy Docker Command
+     * -v /var/run/docker.sock: Allows Trivy to see images on your host's Docker daemon
+     * -v cache: Persists vulnerability DB to make future scans much faster
+     * --scanners: vuln, misconfig
+     */
+    const dockerCmd = `docker run --rm \
+      -v /var/run/docker.sock:/var/run/docker.sock \
+      -v "${reportsDir}:/reports" \
+      -v trivy-cache:/root/.cache/ \
+      aquasec/trivy:latest \
+      image --format json --output /reports/${reportFile} \
+      --scanners vuln,misconfig \
+      --image-config-scanners misconfig \
+      ${imageName}`;
+
+    await execPromise(dockerCmd, { timeout: 300000, maxBuffer: 1024 * 1024 * 20 });
+
+    // 3. Read and Parse the report
+    const jsonContent = await fs.readFile(reportPath, 'utf-8');
+    const jsonReport = JSON.parse(jsonContent);
+
+    // 4. Summarize Results
+    let totalVulnerabilities = 0;
+    let totalMisconfigs = 0;
+
+    if (jsonReport.Results) {
+      jsonReport.Results.forEach(res => {
+        totalVulnerabilities += res.Vulnerabilities?.length || 0;
+        totalMisconfigs += res.Misconfigurations?.length || 0;
+      });
+    }
+
+    res.json({
+      success: true,
+      scanId,
+      image: imageName,
+      summary: {
+        totalVulnerabilities,
+        totalMisconfigs,
+      },
+      // You can return the full report or a filtered version
+      details: jsonReport.Results 
+    });
+
+  } catch (error) {
+    console.error('Trivy Scan error:', error);
+    res.status(500).json({ 
+      error: 'Container scan failed', 
+      details: error.message 
+    });
+  } finally {
+    // await fs.rm(workDir, { recursive: true, force: true });
   }
 });
 
