@@ -6,7 +6,13 @@ const fs = require('fs').promises;
 const execPromise = util.promisify(exec);
 const PORT = 3001;
 const app = express();
+const cors = require("cors");
 
+app.use(cors({
+  origin: "http://localhost:3000",
+  methods: ["GET", "POST"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+}));
 app.use(express.json());
 
 app.post('/api/scan/sast', async (req, res) => {
@@ -22,11 +28,10 @@ app.post('/api/scan/sast', async (req, res) => {
   const repoPath = path.join(workDir, 'repo');
 
   try {
-    // 1. Create directories
     await fs.mkdir(repoPath, { recursive: true });
     await fs.mkdir(reportsDir, { recursive: true });
 
-    // 2. Build Auth URL
+    //Build Auth URL
     let authRepoUrl = repoUrl;
     if (gitUsername && gitToken) {
       const url = new URL(repoUrl);
@@ -38,7 +43,6 @@ app.post('/api/scan/sast', async (req, res) => {
 
     console.log('Running Semgrep scan...');
 
-    // 3. Robust Docker Command
     // -w /src: Sets the working directory inside the container
     // --user $(id -u): Optional, ensures the report file isn't owned by 'root'
     const reportFile = 'semgrep-report.json';
@@ -51,11 +55,11 @@ app.post('/api/scan/sast', async (req, res) => {
       semgrep scan --config auto --json --output /reports/${reportFile}`;
 
     try {
-      // Use a slightly larger maxBuffer in case the output is huge
+      
       await execPromise(dockerCmd, { timeout: 300000, maxBuffer: 1024 * 1024 * 10 });
       console.log("Semgrep finished with 0 findings.");
     } catch (cmdError) {
-      // Semgrep returns 1 if findings are found; we only throw if the file is missing
+      //Semgrep returns 1 if findings are found; we only throw if the file is missing
       const reportPath = path.join(reportsDir, reportFile);
       try {
         await fs.access(reportPath);
@@ -65,7 +69,6 @@ app.post('/api/scan/sast', async (req, res) => {
       }
     }
 
-    // 4. Read and Parse
     const jsonContent = await fs.readFile(path.join(reportsDir, reportFile), 'utf-8');
     const jsonReport = JSON.parse(jsonContent);
     console.log(jsonReport);
@@ -73,6 +76,7 @@ app.post('/api/scan/sast', async (req, res) => {
     res.json({
       success: true,
       scanId,
+      jsonReport,
       summary: {
         totalFindings: jsonReport.results?.length || 0,
         errors: jsonReport.errors?.length || 0,
@@ -112,12 +116,6 @@ app.post('/api/scan/container', async (req, res) => {
 
     console.log(`Starting Trivy scan for image: ${imageName}`);
 
-    /**
-     * 2. Trivy Docker Command
-     * -v /var/run/docker.sock: Allows Trivy to see images on your host's Docker daemon
-     * -v cache: Persists vulnerability DB to make future scans much faster
-     * --scanners: vuln, misconfig
-     */
     const dockerCmd = `docker run --rm \
       -v /var/run/docker.sock:/var/run/docker.sock \
       -v "${reportsDir}:/reports" \
@@ -153,7 +151,6 @@ app.post('/api/scan/container', async (req, res) => {
         totalVulnerabilities,
         totalMisconfigs,
       },
-      // You can return the full report or a filtered version
       details: jsonReport.Results 
     });
 

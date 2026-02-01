@@ -1,38 +1,6 @@
-# Dependencies
-node_modules/
+sast_backend/node_modules/
+sast_frontend/node_modules/
 package-lock.json
-yarn.lock
-
-# Environment variables
+sast_backend/scans
 .env
-.env.local
-.env.*.local
 
-# Build and dist
-build/
-dist/
-out/
-
-# Logs
-logs/
-*.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-
-# Scan outputs and reports
-sast_backend/scans/
-sast_backend/reports/
-
-# IDE and editor settings
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-.DS_Store
-Thumbs.db
-
-# OS-specific files
-.DS_Store
-.env.local
