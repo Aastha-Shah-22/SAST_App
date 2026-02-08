@@ -63,7 +63,7 @@ export default function CreateTest() {
       {/* Cards Grid */}
       <Grid container spacing={3}>
         {scanOptions.map((option) => (
-          <Grid item xs={12} md={6} key={option.title}>
+          <Grid size={{ xs: 12, md: 6 }} key={option.title}>
             <Card 
               variant="outlined" 
               sx={{ 
