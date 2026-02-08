@@ -1,7 +1,7 @@
 const express = require("express");
 const cors = require("cors");
 
-const scanRoutes = require("./routes/dastRoutes");
+const scanRoutes = require("./routes/scan_routes");
 
 function createApp() {
   const app = express();
@@ -15,7 +15,7 @@ function createApp() {
     res.json({ status: "ok" });
   });
 
-  // API routes (versioned/grouped under /api)
+  // API routes
   app.use("/api", scanRoutes);
 
   return app;
