@@ -9,7 +9,10 @@ import Card from '@mui/material/Card';
 import CardContent from '@mui/material/CardContent';
 import CardActionArea from '@mui/material/CardActionArea';
 import Avatar from '@mui/material/Avatar';
-import { startSastScan } from '@/services/scan.service';
+import SastScanDialog from '@/components/sast-scan';
+import ContainerScanDialog from '@/components/container-scan';
+import AppScanDialog from '@/components/app-scan';
+import DASTScanDialog from '@/components/dast-container';
 
 // Icons
 import SearchIcon from '@mui/icons-material/Search';
@@ -46,11 +49,20 @@ const scanOptions = [
     color: '#fff3e0', // Light Orange
     iconColor: '#ed6c02', // Orange
   },
+  {
+    title: 'Container',
+    subtitle: 'Scan container images for security weaknesses',
+    icon: <LockIcon fontSize="medium" />,
+    color: '#fff3e0', // Light Orange
+    iconColor: '#96de23', // Orange
+  },
 ];
 
-const [openSast, setOpenSast] = useState(false);
-
 export default function CreateTest() {
+  const [openSast, setOpenSast] = useState(false);
+  const [openContainer, setOpenContainer] = useState(false);
+  const [openDast, setOpenDast] = useState(false);
+const [openApp, setOpenApp] = useState(false);
   return (
     <Container maxWidth="lg" sx={{ mt: 5, mb: 5 }}>
       {/* Header Section */}
@@ -77,7 +89,10 @@ export default function CreateTest() {
             >
               <CardActionArea sx={{ height: '100%', p: 2 }} 
               onClick={() => {
-                  if (option.title === 'SAST') setOpenSast(true);
+                  if (option.title === 'SAST') setOpenSast(true) ;
+                  else if (option.title === 'DAST') setOpenDast(true);
+                  else if (option.title === 'MOBSF') setOpenApp(true);
+                  else if (option.title === 'Container') setOpenContainer(true);
                 }}
                 >
                 <CardContent>
@@ -108,6 +123,11 @@ export default function CreateTest() {
           </Grid>
         ))}
       </Grid>
+
+      {openSast && <SastScanDialog open={openSast} onClose={() => setOpenSast(false)} />}
+      {openContainer && <ContainerScanDialog open={openContainer} onClose={() => setOpenContainer(false)} />}
+      {openApp && <AppScanDialog open={openApp} onClose={() => setOpenApp(false)} />}
+      {openDast && <DASTScanDialog open={openDast} onClose={() => setOpenDast(false)} />}
     </Container>
   );
 }

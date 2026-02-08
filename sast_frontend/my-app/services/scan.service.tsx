@@ -1,4 +1,4 @@
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5000/api";
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:3000/api";
 
 interface SastScanPayload {
   repoUrl: string;
@@ -32,6 +32,7 @@ export const startSastScan = async (payload: SastScanPayload) => {
   });
 
   if (!res.ok) {
+    console.log("Cannot start SAST scan", await res.text());
     throw new Error("Failed to start SAST scan");
   }
 

@@ -1,4 +1,5 @@
 'use client';
+
 import React, { useState } from 'react';
 import {
   Dialog,
@@ -10,23 +11,19 @@ import {
   Stack,
   IconButton,
 } from '@mui/material';
+import { startContainerScan } from '@/services/scan.service';
 import CloseIcon from '@mui/icons-material/Close';
-import { startSastScan } from '@/services/scan.service';
+
 interface Props {
   open: boolean;
   onClose: () => void;
 }
 
-export default function SastScanDialog({ open, onClose }: Props) {
-
+export default function ContainerScanDialog({ open, onClose }: Props) {
   const [loading, setLoading] = useState(false);
 
   const [form, setForm] = useState({
-    repoUrl: '',
-    gitUsername: '',
-    gitToken: '',
-    semgrepToken: '',
-    branch: 'main',
+    imageName: '',
   });
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -35,14 +32,14 @@ export default function SastScanDialog({ open, onClose }: Props) {
 
   const handleSubmit = async () => {
     try {
-      console.log("Starting SAST scan with payload:", form);
+      console.log('Starting Container scan with payload:', form);
       setLoading(true);
-      alert('SAST scan started 🚀');
+      alert('Container scan started 🚢');
       onClose();
-      await startSastScan(form);
-      console.log("Called the Sast scan API successfully");
+      await startContainerScan(form);
+      console.log('Called the Container scan API successfully');
     } catch (err: any) {
-      alert(err.message || 'Failed to start scan');
+      alert(err.message || 'Failed to start container scan');
     } finally {
       setLoading(false);
     }
@@ -50,7 +47,8 @@ export default function SastScanDialog({ open, onClose }: Props) {
 
   return (
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm">
-      <DialogTitle>Start SAST Scan</DialogTitle>
+      <DialogTitle>Start Container Scan</DialogTitle>
+      {/* add a close button */}
       <IconButton
         onClick={onClose}
         sx={{ position: 'absolute', right: 8, top: 8, color: (theme) => theme.palette.grey[500] }}
@@ -60,43 +58,10 @@ export default function SastScanDialog({ open, onClose }: Props) {
       <DialogContent>
         <Stack spacing={2} mt={1}>
           <TextField
-            label="Repository URL"
-            name="repoUrl"
-            value={form.repoUrl}
-            onChange={handleChange}
-            fullWidth
-          />
-
-          <TextField
-            label="Git Username"
-            name="gitUsername"
-            value={form.gitUsername}
-            onChange={handleChange}
-            fullWidth
-          />
-
-          <TextField
-            label="Git Token"
-            name="gitToken"
-            type="password"
-            value={form.gitToken}
-            onChange={handleChange}
-            fullWidth
-          />
-
-          <TextField
-            label="Semgrep Token"
-            name="semgrepToken"
-            type="password"
-            value={form.semgrepToken}
-            onChange={handleChange}
-            fullWidth
-          />
-
-          <TextField
-            label="Branch"
-            name="branch"
-            value={form.branch}
+            label="Docker Image Name"
+            name="imageName"
+            placeholder="e.g. nginx:latest"
+            value={form.imageName}
             onChange={handleChange}
             fullWidth
           />
@@ -110,7 +75,7 @@ export default function SastScanDialog({ open, onClose }: Props) {
         <Button
           variant="contained"
           onClick={handleSubmit}
-          disabled={loading}
+          disabled={loading || !form.imageName}
         >
           {loading ? 'Starting...' : 'Start Scan'}
         </Button>

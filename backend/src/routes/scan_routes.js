@@ -1,10 +1,13 @@
 const express = require("express");
-const { runDastScan, runSastScan, runContainerScan, runAppScan } = require("../controllers/controller");
+const { runDastScan } = require("../controllers/dastController");
+const { runSastScan } = require("../controllers/sastController");
+const { runContainerScan } = require("../controllers/containerController");
+const { runAppScan } = require("../controllers/appController");
 
 const router = express.Router();
 
 // Dynamic Application Security Testing (DAST) scans
-//router.post("/scan/dast", runDastScan);
+router.post("/scan/dast", runDastScan);
 
 router.post("/scan/sast", runSastScan);
 
