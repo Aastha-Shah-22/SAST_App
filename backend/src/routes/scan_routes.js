@@ -1,4 +1,7 @@
+
 const express = require("express");
+const multer = require("multer");
+const upload = multer({ dest: "uploads/" });
 const { runDastScan } = require("../controllers/dastController");
 const { runSastScan } = require("../controllers/sastController");
 const { runContainerScan } = require("../controllers/containerController");
@@ -13,6 +16,6 @@ router.post("/scan/sast", runSastScan);
 
 router.post("/scan/container", runContainerScan);
 
-router.post("/scan/app", runAppScan);
+router.post("/scan/app", upload.single("file"), runAppScan);
 
 module.exports = router;
