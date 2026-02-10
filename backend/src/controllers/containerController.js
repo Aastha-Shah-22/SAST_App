@@ -3,7 +3,8 @@ const fs = require("fs").promises;
 const util = require('util');
 const { exec } = require("child_process");
 const execPromise = util.promisify(exec);
-const cors = require("cors");
+const VulReport = require('../model/schema.js');
+const mongoose = require('mongoose');
 
 async function runContainerScan(req, res) {
   const { imageName } = req.body;
@@ -68,8 +69,6 @@ async function runContainerScan(req, res) {
       error: 'Container scan failed', 
       details: error.message 
     });
-  } finally {
-    // await fs.rm(workDir, { recursive: true, force: true });
   }
 };
 

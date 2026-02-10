@@ -3,10 +3,11 @@ const fs = require("fs").promises;
 const util = require('util');
 const { exec } = require("child_process");
 const execPromise = util.promisify(exec);
-const cors = require("cors");
+const VulReport = require('../model/schema.js');
+const mongoose = require('mongoose');
 
 async function runSastScan(req, res) {
-  const { repoUrl, gitUsername, gitToken, semgrepToken, branch = 'main' } = req.body;
+  const { clientName, repoUrl, gitUsername, gitToken, semgrepToken, branch = 'main' } = req.body;
 
   if (!repoUrl || !semgrepToken) {
     return res.status(400).json({ error: 'Repository URL and Semgrep token are required' });
@@ -16,12 +17,9 @@ async function runSastScan(req, res) {
   const workDir = path.resolve(__dirname, "..", "scans", scanId);
   const reportsDir = path.join(workDir, "reports");
   const repoPath = path.join(workDir, "repo");
-  const sastResultsDir = path.resolve(__dirname, "..", "scans", "sast_results");
-
   try {
     await fs.mkdir(repoPath, { recursive: true });
     await fs.mkdir(reportsDir, { recursive: true });
-    await fs.mkdir(sastResultsDir, { recursive: true });
 
     //Build Auth URL
     let authRepoUrl = repoUrl;
@@ -46,41 +44,59 @@ async function runSastScan(req, res) {
       semgrep/semgrep:latest \
       semgrep scan --config auto --json --output /reports/${reportFile}`;
 
+    let status = "failed";
+    let reportContent = null; 
     try {
-      
       await execPromise(dockerCmd, { timeout: 300000, maxBuffer: 1024 * 1024 * 10 });
       console.log("Semgrep finished with 0 findings.");
+      status = 'completed';
+
     } catch (cmdError) {
-      //Semgrep returns 1 if findings are found; we only throw if the file is missing
+      console.log("In catch block") ;     
+    }
+
       const reportPath = path.join(reportsDir, reportFile);
+      status = 'completed';
       try {
         await fs.access(reportPath);
         console.log('Semgrep completed with findings.');
+        const jsonContent = await fs.readFile(reportPath, "utf-8");
+        const jsonReport = JSON.parse(jsonContent);
+        console.log(jsonReport);
+        reportContent = jsonReport;
       } catch (e) {
-        throw new Error(`Semgrep failed and no report was generated: ${cmdError.message}`);
+        console.log("No jsonReport Generated");
       }
-    }
 
-    const jsonContent = await fs.readFile(path.join(reportsDir, reportFile), "utf-8");
-    const jsonReport = JSON.parse(jsonContent);
-    console.log(jsonReport);
+    try{
+      console.log('Saving report to database...');
+      await VulReport.create({
+        _id: new mongoose.Types.ObjectId(),
+        client_name: clientName,
+        scan_id: scanId,
+        scan_type: 'SAST',
+        scan_remediated_status: 'in_progress',
+        scan_status: status,
+        report: reportContent,
+      });
+      console.log('Report saved successfully');
+    }
+    catch(err){
+      console.error('Database connection failed:', err);
+      throw new Error('Failed to connect to database');
+    }
 
     const report = {
       success: true,
       scanId,
+      clientName,
       repoUrl,
-      jsonReport,
       summary: {
-        totalFindings: jsonReport.results?.length || 0,
-        errors: jsonReport.errors?.length || 0,
-        pathsScanned: jsonReport.paths?.scanned?.length || 0
+        totalFindings: reportContent?.results?.length || 0,
+        errors: reportContent?.errors?.length || 0,
+        pathsScanned: reportContent?.paths?.scanned?.length || 0
       }
     };
-
-    const sastReportFileName = `semgrep-report-${scanId}.json`;
-    const sastReportPath = path.join(sastResultsDir, sastReportFileName);
-    await fs.writeFile(sastReportPath, JSON.stringify(report, null, 2), "utf-8");
-    console.log(`[SAST] Report saved to ${sastReportPath}`);
 
     res.json(report);
 
@@ -93,7 +109,7 @@ async function runSastScan(req, res) {
     });
   }
   finally {
-     await fs.rm(repoPath, { recursive: true });
+     await fs.remove(workDir, { recursive: true });
   }
 };
 
