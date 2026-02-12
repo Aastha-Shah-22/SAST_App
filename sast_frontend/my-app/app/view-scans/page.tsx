@@ -11,6 +11,8 @@ import TableCell from '@mui/material/TableCell';
 import TableContainer from '@mui/material/TableContainer';
 import TableHead from '@mui/material/TableHead';
 import TableRow from '@mui/material/TableRow';
+import { useState } from 'react';
+import VulnerabilityReport from '@/components/vulnerability_report';
 
 // Define our data type
 interface ScanData {
@@ -32,6 +34,12 @@ const rows: ScanData[] = [
 ];
 
 export default function ViewScansPage() {
+  const [selectedReport, setSelectedReport] = useState<string | null>(null);
+
+  // If a report is selected, show the Report Component instead of the table
+  if (selectedReport) {
+    return <VulnerabilityReport reportName={selectedReport} onBack={() => setSelectedReport(null)} />;
+  }
   return (
     <Box>
       {/* Header */}
@@ -55,7 +63,10 @@ export default function ViewScansPage() {
           </TableHead>
           <TableBody>
             {rows.map((row) => (
-              <TableRow key={row.id} hover sx={{ '&:last-child td, &:last-child th': { border: 0 } }}>
+              <TableRow key={row.id} 
+                hover
+                onClick={() => setSelectedReport(row.Scans)} 
+                sx={{ '&:last-child td, &:last-child th': { border: 0 } }}>
                 <TableCell component="th" scope="row" sx={{ fontWeight: 500, color: '#334155' }}>
                   {row.Scans}
                 </TableCell>
