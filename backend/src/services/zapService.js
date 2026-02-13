@@ -1,17 +1,9 @@
 const axios = require("axios");
 
-// ZAP configuration and timeouts
+// ZAP configuration
 const ZAP_BASE = process.env.ZAP_BASE_URL || "http://localhost:8080";
 const ZAP_API_KEY = process.env.ZAP_API_KEY || "";
 const POLL_INTERVAL = 2000; // 2 sec so progress logs are frequent
-// Full scan: runs to 100% with optional safety cap. Set ZAP_FULL_SCAN_PHASE_MS (0 = no cap, default 600000 = 10 min).
-const POLL_TIMEOUT_MS =
-  process.env.ZAP_FULL_SCAN_PHASE_MS === undefined ||
-  process.env.ZAP_FULL_SCAN_PHASE_MS === ""
-    ? 600000
-    : Number(process.env.ZAP_FULL_SCAN_PHASE_MS);
-// Quick scan: prototype only; stops after N sec per phase. Not for production (see docs/PRODUCTION.md).
-const QUICK_SCAN_PHASE_MS = 30000; // 30 sec per phase
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
@@ -31,16 +23,8 @@ function wrapZapError(err, context) {
   throw new Error(`${context}: ${msg}`);
 }
 
-async function runZapScan(targetUrl, options = {}) {
-  const quickScan = !!options.quickScan;
-  // Full scan: run to 100%; optional cap. Quick scan: time-limited (prototype only).
-  const spiderMaxMs = quickScan ? QUICK_SCAN_PHASE_MS : POLL_TIMEOUT_MS;
-  const ascanMaxMs = quickScan ? QUICK_SCAN_PHASE_MS : POLL_TIMEOUT_MS;
-  const useTimeCap = spiderMaxMs > 0; // 0 = no cap, run to 100% only
-
-  console.log(
-    `[ZAP] Target: ${targetUrl} | Mode: ${quickScan ? "quick (~1 min)" : "full"}`
-  );
+async function runZapScan(targetUrl) {
+  console.log(`[ZAP] Target: ${targetUrl} | Mode: full scan`);
 
   // 1. Spider
   let spiderRes;
@@ -60,14 +44,7 @@ async function runZapScan(targetUrl, options = {}) {
 
   console.log("[ZAP] Spider started, polling progress...");
   let spiderProgress = 0;
-  const spiderPhaseStart = Date.now();
   while (spiderProgress < 100) {
-    if (useTimeCap && Date.now() - spiderPhaseStart > spiderMaxMs) {
-      console.log(
-        "[ZAP] Spider phase time limit reached, proceeding with current crawl."
-      );
-      break;
-    }
     await sleep(POLL_INTERVAL);
     try {
       const statusRes = await axios.get(
@@ -82,9 +59,9 @@ async function runZapScan(targetUrl, options = {}) {
       wrapZapError(err, "Spider status failed");
     }
   }
-  console.log("[ZAP] Spider phase done (100% or time limit).");
+  console.log("[ZAP] Spider phase done (100%).");
 
-  
+
   let ascanRes;
   try {
     ascanRes = await axios.get(
@@ -102,14 +79,7 @@ async function runZapScan(targetUrl, options = {}) {
 
   console.log("[ZAP] Active scan started, polling progress...");
   let ascanProgress = 0;
-  const ascanPhaseStart = Date.now();
   while (ascanProgress < 100) {
-    if (useTimeCap && Date.now() - ascanPhaseStart > ascanMaxMs) {
-      console.log(
-        "[ZAP] Active scan phase time limit reached, fetching results."
-      );
-      break;
-    }
     await sleep(POLL_INTERVAL);
     try {
       const statusRes = await axios.get(
@@ -124,7 +94,7 @@ async function runZapScan(targetUrl, options = {}) {
       wrapZapError(err, "Active scan status failed");
     }
   }
-  console.log("[ZAP] Active scan phase done (100% or time limit).");
+  console.log("[ZAP] Active scan phase done (100%).");
 
   // 4. Fetch results
   console.log("[ZAP] Fetching report...");

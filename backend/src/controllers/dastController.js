@@ -6,7 +6,7 @@ const VulReport = require("../model/schema.js");
 
 const { runZapScan } = require("../services/zapService");
 async function runDastScan(req, res) {
-  const { url, quickScan, clientName } = req.body || {};
+  const { url, clientName } = req.body || {};
 
   if (!url) {
     return res.status(400).json({ error: "Target URL is required" });
@@ -29,11 +29,9 @@ async function runDastScan(req, res) {
 
     await fs.mkdir(dastResultsDir, { recursive: true });
 
-    console.log(
-      `Starting ZAP scan for ${url}${quickScan ? " (quick scan)" : ""}`
-    );
+    console.log(`Starting ZAP scan for ${url}`);
 
-    const findings = await runZapScan(url, { quickScan: !!quickScan });
+    const findings = await runZapScan(url);
 
     const report = {
       success: true,
