@@ -9,13 +9,11 @@ import {
   TextField,
   Button,
   Stack,
-  FormControlLabel,
-  Checkbox,
   IconButton,
   Typography
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
-import { startDastScan } from '@/services/scan.service'; // Ensure this is exported in your service
+import { startDastScan } from '@/services/scan.service'; 
 
 interface Props {
   open: boolean;
@@ -27,7 +25,6 @@ export default function DastScanDialog({ open, onClose }: Props) {
 
   const [form, setForm] = useState({
     url: '',
-    quickScan: false,
   });
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -68,7 +65,7 @@ export default function DastScanDialog({ open, onClose }: Props) {
       <DialogContent>
         <Stack spacing={2} mt={1}>
           <Typography variant="body2" color="text.secondary">
-            Enter the live URL of the application you wish to test for vulnerabilities.
+            Enter the live URL of the application
           </Typography>
           
           <TextField
@@ -81,23 +78,6 @@ export default function DastScanDialog({ open, onClose }: Props) {
             required
             type="url"
           />
-
-          <FormControlLabel
-            control={
-              <Checkbox
-                name="quickScan"
-                checked={form.quickScan}
-                onChange={handleChange}
-                color="primary"
-              />
-            }
-            label="Enable Quick Scan (Baseline only)"
-          />
-          {form.quickScan && (
-            <Typography variant="caption" color="primary" sx={{ ml: 4 }}>
-              * Quick scan skips deep crawling to provide faster results.
-            </Typography>
-          )}
         </Stack>
       </DialogContent>
 

@@ -10,7 +10,6 @@ interface SastScanPayload {
 
 interface DastScanPayload {
   url: string;
-  quickScan: boolean;
 }
 
 interface ContainerScanPayload {
