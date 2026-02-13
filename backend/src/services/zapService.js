@@ -84,19 +84,7 @@ async function runZapScan(targetUrl, options = {}) {
   }
   console.log("[ZAP] Spider phase done (100% or time limit).");
 
-  // 2. Ensure target is in the Sites tree (handles redirects/trailing slashes)
-  try {
-    await axios.get(
-      `${ZAP_BASE}/JSON/core/action/accessUrl/`,
-      { params: zapParams({ url: targetUrl, followRedirects: true }) }
-    );
-    console.log("[ZAP] accessUrl called to ensure target is in the Sites tree.");
-  } catch (err) {
-    // If this fails we still want a clear error message
-    wrapZapError(err, "Priming target URL with accessUrl failed");
-  }
-
-  // 3. Active Scan
+  
   let ascanRes;
   try {
     ascanRes = await axios.get(

@@ -5,7 +5,6 @@ const mongoose = require("mongoose");
 const VulReport = require("../model/schema.js");
 
 const { runZapScan } = require("../services/zapService");
-
 async function runDastScan(req, res) {
   const { url, quickScan, clientName } = req.body || {};
 
@@ -18,7 +17,6 @@ async function runDastScan(req, res) {
   const dastResultsDir = path.resolve(__dirname, "..", "scans", "dast_results");
 
   try {
-    // Create a pending task entry in MongoDB (similar to SAST)
     await VulReport.create({
       _id: dbId,
       client_name: clientName,
@@ -51,7 +49,6 @@ async function runDastScan(req, res) {
     await fs.writeFile(reportPath, JSON.stringify(report, null, 2), "utf-8");
     console.log(`[DAST] Report saved to ${reportPath}`);
 
-    // Update MongoDB record with final report
     await VulReport.findByIdAndUpdate(dbId, {
       scan_status: "completed",
       finished_at: new Date(),
@@ -62,7 +59,6 @@ async function runDastScan(req, res) {
   } catch (err) {
     console.error(err);
 
-    // Best-effort update of Mongo record on failure
     try {
       await VulReport.findByIdAndUpdate(dbId, {
         scan_status: "failed",

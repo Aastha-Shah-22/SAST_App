@@ -11,7 +11,7 @@ const testConnection = async () => {
             _id: new mongoose.Types.ObjectId(),
             client_id: 'test_client',
             scan_id: 'test_scan',   
-            scan_type: 'SAST', 
+            scan_type: 'DAST', 
             scan_status: 'in_progress',
             report: { test: 'This is a test report' },
         });
