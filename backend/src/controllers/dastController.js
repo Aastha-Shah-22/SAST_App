@@ -29,9 +29,12 @@ async function runDastScan(req, res) {
 
     await fs.mkdir(dastResultsDir, { recursive: true });
 
-    console.log(`Starting ZAP scan for ${url}`);
+    const scanWorkDir = path.join(dastResultsDir, `scan-${scanId}`);
+    await fs.mkdir(scanWorkDir, { recursive: true });
 
-    const findings = await runZapScan(url);
+    console.log(`Starting ZAP scan for ${url} (Docker will pull image if needed)`);
+
+    const findings = await runZapScan(url, scanWorkDir);
 
     const report = {
       success: true,
@@ -46,6 +49,13 @@ async function runDastScan(req, res) {
     const reportPath = path.join(dastResultsDir, reportFileName);
     await fs.writeFile(reportPath, JSON.stringify(report, null, 2), "utf-8");
     console.log(`[DAST] Report saved to ${reportPath}`);
+
+    try {
+      await fs.rm(scanWorkDir, { recursive: true, force: true });
+      console.log(`[DAST] Cleaned up ${scanWorkDir}`);
+    } catch (cleanupErr) {
+      console.warn("DAST cleanup warning:", cleanupErr.message);
+    }
 
     await VulReport.findByIdAndUpdate(dbId, {
       scan_status: "completed",
