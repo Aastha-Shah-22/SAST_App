@@ -6,7 +6,7 @@ const vulReports = new mongoose.Schema({
     scan_id: String,
     scan_type: { type: String, enum: ['SAST', 'DAST', 'Container', 'MobileAPK', 'Network'] },
     scan_remediated_status: { type: String, enum: ['in_progress', 'completed', 'failed'] },
-    scan_status: {type: String, enum: ['completed', 'failed', 'pending'], default: 'failed' },
+    scan_status: {type: String, enum: ['completed', 'failed', 'pending', 'running'], default: 'failed' },
     started_at: { type: Date, default: Date.now },
     finished_at: { type: Date },
     report: Object,

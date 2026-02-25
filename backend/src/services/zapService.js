@@ -1,84 +1,164 @@
 const path = require("path");
 const fs = require("fs").promises;
-const util = require("util");
-const { exec } = require("child_process");
-const execPromise = util.promisify(exec);
+const Docker = require("dockerode");
 
-const ZAP_IMAGE = process.env.ZAP_DOCKER_IMAGE || "ghcr.io/zaproxy/zaproxy:stable";
-const ZAP_SCAN_TIMEOUT = 600000;
+const docker = new Docker();
 
-function extractAlertsFromReport(jsonReport) {
-  if (!jsonReport) return [];
-  if (Array.isArray(jsonReport.alerts)) return jsonReport.alerts;
-  if (Array.isArray(jsonReport.site)) {
-    const alerts = [];
-    for (const site of jsonReport.site) {
-      if (Array.isArray(site.alerts)) {
-        alerts.push(...site.alerts);
-      }
-    }
-    return alerts;
+const ZAP_IMAGE =
+  process.env.ZAP_DOCKER_IMAGE || "ghcr.io/zaproxy/zaproxy:stable";
+
+const activeScans = new Map();
+/*
+scanId -> {
+   containerId,
+   status
+}
+*/
+
+async function ensureImage() {
+  try {
+    await docker.getImage(ZAP_IMAGE).inspect();
+  } catch {
+    console.log("[ZAP] Pulling image...");
+    const stream = await docker.pull(ZAP_IMAGE);
+
+    await new Promise((resolve, reject) => {
+      docker.modem.followProgress(stream, err =>
+        err ? reject(err) : resolve()
+      );
+    });
+
+    console.log("[ZAP] Image pulled");
   }
+}
+
+function extractAlerts(json) {
+  if (!json) return [];
+
+  if (Array.isArray(json.alerts))
+    return json.alerts;
+
+  if (Array.isArray(json.site)) {
+    return json.site.flatMap(s => s.alerts || []);
+  }
+
   return [];
 }
 
-async function runZapScan(targetUrl, reportDir) {
-  console.log(`[ZAP] Target: ${targetUrl} | Mode: Docker full scan (zap-full-scan.py)`);
+async function runZapScan(targetUrl, reportDir, scanId) {
+
+  console.log("[ZAP] preparing scan", scanId);
 
   await fs.mkdir(reportDir, { recursive: true });
 
-  console.log(`[ZAP] Ensuring ZAP image is available: ${ZAP_IMAGE}`);
-  try {
-    await execPromise(`docker pull ${ZAP_IMAGE}`, {
-      timeout: 300000, // 5 min for pull
-      maxBuffer: 1024 * 1024 * 5,
-    });
-  } catch (pullErr) {
-    throw new Error(
-      `Failed to pull ZAP Docker image. Ensure Docker is running and you have network access. Image: ${ZAP_IMAGE}. Error: ${pullErr.message}`
-    );
-  }
-  console.log("[ZAP] Image ready, starting full scan...");
+  await ensureImage();
 
-  const reportFileName = "zap-raw-report.json";
-  const containerReportPath = "/zap/wrk/" + reportFileName;
+  const reportName = "zap-raw-report.json";
 
-  const normalizedDir = path.resolve(reportDir);
-  const dockerCmd = `docker run --rm -v "${normalizedDir}:/zap/wrk:rw" ${ZAP_IMAGE} zap-full-scan.py -t "${targetUrl}" -J ${containerReportPath} -I`;
+  const container = await docker.createContainer({
 
-  let scanExitCode = 0;
-  try {
-    await execPromise(dockerCmd, {
-      timeout: ZAP_SCAN_TIMEOUT,
-      maxBuffer: 1024 * 1024 * 20,
-    });
-  } catch (execErr) {
-    scanExitCode = execErr.code ?? -1;
-    if (scanExitCode === 1 || scanExitCode === 2) {
-      console.log(`[ZAP] Scan completed with findings (exit code ${scanExitCode})`);
-    } else {
-      throw new Error(
-        `ZAP scan failed. Ensure Docker is running. Error: ${execErr.message}`
-      );
+    Image: ZAP_IMAGE,
+
+    Cmd: [
+      "zap-full-scan.py",
+      "-t",
+      targetUrl,
+      "-J",
+      `/zap/wrk/${reportName}`,
+      "-I"
+    ],
+
+    HostConfig: {
+      Binds: [`${path.resolve(reportDir)}:/zap/wrk`],
     }
-  }
 
-  const reportPath = path.join(normalizedDir, reportFileName);
-  let jsonReport;
-  try {
-    await fs.access(reportPath);
-    const content = await fs.readFile(reportPath, "utf-8");
-    jsonReport = JSON.parse(content);
-  } catch (readErr) {
-    throw new Error(
-      `ZAP scan ran but report file was not found or invalid. Path: ${reportPath}. Error: ${readErr.message}`
-    );
-  }
+  });
 
-  const alerts = extractAlertsFromReport(jsonReport);
-  const count = alerts.length;
-  console.log(`[ZAP] Done. Alerts: ${count}`);
-  return alerts;
+  const containerId = container.id;
+
+  console.log("[ZAP] container created", containerId);
+
+  activeScans.set(scanId, {
+    containerId,
+    status: "running"
+  });
+
+  console.log("[ZAP] activeScans =", activeScans);
+
+  await container.start();
+
+  console.log("[ZAP] scan started", scanId);
+
+  /*
+  run in background
+  */
+  container.wait().then(async () => {
+
+    console.log("[ZAP] scan finished", scanId);
+
+    try {
+
+      const reportPath =
+        path.join(reportDir, reportName);
+
+      const content =
+        await fs.readFile(reportPath, "utf8");
+
+      const alerts =
+        extractAlerts(JSON.parse(content));
+
+      console.log(
+        "[ZAP] alerts:",
+        alerts.length
+      );
+
+    } catch {}
+
+    try {
+      await container.remove({ force: true });
+    } catch {}
+
+    activeScans.delete(scanId);
+
+    console.log("[ZAP] removed from activeScans");
+
+  });
+
+  return containerId;
 }
 
-module.exports = { runZapScan };
+
+async function stopZapScan(scanId) {
+
+  console.log("STOP requested:", scanId);
+  console.log("activeScans now:", activeScans);
+
+  const scan = activeScans.get(scanId);
+
+  if (!scan)
+    throw new Error(
+      "Scan not running"
+    );
+
+  const container =
+    docker.getContainer(scan.containerId);
+
+  try {
+    await container.stop({ t: 0 });
+  } catch {}
+
+  try {
+    await container.remove({ force: true });
+  } catch {}
+
+  activeScans.delete(scanId);
+
+  console.log("STOP successful");
+
+}
+
+
+module.exports = {
+  runZapScan,
+  stopZapScan
+};
