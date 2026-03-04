@@ -9,46 +9,77 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 async function runDastScan(req, res) {
-  const { url, quickScan } = req.body || {};
+  const { url, clientName } = req.body;
 
   if (!url) {
-    return res.status(400).json({ error: "Target URL is required" });
+    return res.status(400).json({
+      error: "url required"
+    });
   }
 
   const scanId = Date.now().toString();
-  const dastResultsDir = path.resolve(__dirname, "..", "scans", "dast_results");
+
+  const dbId = new mongoose.Types.ObjectId();
+
+  const dir = path.resolve(
+    __dirname,
+    "..",
+    "scans",
+    "dast_results",
+    `scan-${scanId}`
+  );
+
+  await fs.mkdir(dir, {
+    recursive: true
+  });
+
+  await VulReport.create({
+    _id: dbId,
+    scan_id: scanId,
+    client_name: clientName,
+    scan_status: "running",
+    scan_type: "DAST"
+  });
+
+  await runZapScan(
+    url,
+    dir,
+    scanId
+  );
+
+  res.json({
+    success: true,
+    scanId
+  });
+}
+
+
+
+async function cancelDastScan(req, res) {
+  const { scanId } = req.params;
 
   try {
-    await fs.mkdir(dastResultsDir, { recursive: true });
+    await stopZapScan(scanId);
 
-    console.log(
-      `Starting ZAP scan for ${url}${quickScan ? " (quick scan)" : ""}`
+    await VulReport.updateOne(
+      { scan_id: scanId },
+      {
+        scan_status: "cancelled"
+      }
     );
 
-    const findings = await runZapScan(url, { quickScan: !!quickScan });
-
-    const report = {
-      success: true,
-      scanId,
-      target: url,
-      totalFindings: findings.length,
-      findings
-    };
-
-    const reportFileName = `zap-report-${scanId}.json`;
-    const reportPath = path.join(dastResultsDir, reportFileName);
-    await fs.writeFile(reportPath, JSON.stringify(report, null, 2), "utf-8");
-    console.log(`[DAST] Report saved to ${reportPath}`);
-
-    return res.json(report);
-  } catch (err) {
-    console.error(err);
-    return res.status(500).json({
-      error: "ZAP scan failed",
-      details: err.message
+    res.json({
+      success: true
+    });
+  }
+  catch (e) {
+    res.status(400).json({
+      error: e.message
     });
   }
 }
+
+
 
 export { runDastScan };
 

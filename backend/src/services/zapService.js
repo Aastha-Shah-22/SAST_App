@@ -1,3 +1,35 @@
+const path = require("path");
+const fs = require("fs").promises;
+const Docker = require("dockerode");
+
+const docker = new Docker();
+
+const ZAP_IMAGE =
+  process.env.ZAP_DOCKER_IMAGE || "ghcr.io/zaproxy/zaproxy:stable";
+
+const activeScans = new Map();
+/*
+scanId -> {
+   containerId,
+   status
+}
+*/
+
+async function ensureImage() {
+  try {
+    await docker.getImage(ZAP_IMAGE).inspect();
+  } catch {
+    console.log("[ZAP] Pulling image...");
+    const stream = await docker.pull(ZAP_IMAGE);
+
+    await new Promise((resolve, reject) => {
+      docker.modem.followProgress(stream, err =>
+        err ? reject(err) : resolve()
+      );
+    });
+
+    console.log("[ZAP] Image pulled");
+  }
 import axios from "axios";
 
 // ZAP configuration and timeouts
@@ -21,91 +53,136 @@ function zapParams(params) {
   return p;
 }
 
-function wrapZapError(err, context) {
-  if (err.code === "ECONNREFUSED" || err.code === "ECONNRESET") {
-    throw new Error(
-      `ZAP is not reachable at ${ZAP_BASE}. Start ZAP in Docker first. Original: ${err.message}`
-    );
+function extractAlerts(json) {
+  if (!json) return [];
+
+  if (Array.isArray(json.alerts))
+    return json.alerts;
+
+  if (Array.isArray(json.site)) {
+    return json.site.flatMap(s => s.alerts || []);
   }
-  const msg = err.response?.data?.message || err.message;
-  throw new Error(`${context}: ${msg}`);
+
+  return [];
 }
 
-async function runZapScan(targetUrl, options = {}) {
-  const quickScan = !!options.quickScan;
-  // Full scan: run to 100%; optional cap. Quick scan: time-limited (prototype only).
-  const spiderMaxMs = quickScan ? QUICK_SCAN_PHASE_MS : POLL_TIMEOUT_MS;
-  const ascanMaxMs = quickScan ? QUICK_SCAN_PHASE_MS : POLL_TIMEOUT_MS;
-  const useTimeCap = spiderMaxMs > 0; // 0 = no cap, run to 100% only
+async function runZapScan(targetUrl, reportDir, scanId) {
 
-  console.log(
-    `[ZAP] Target: ${targetUrl} | Mode: ${quickScan ? "quick (~1 min)" : "full"}`
-  );
+  console.log("[ZAP] preparing scan", scanId);
 
-  // 1. Spider
-  let spiderRes;
-  try {
-    spiderRes = await axios.get(
-      `${ZAP_BASE}/JSON/spider/action/scan/`,
-      { params: zapParams({ url: targetUrl, recurse: true }) }
-    );
-  } catch (err) {
-    wrapZapError(err, "Spider start failed");
-  }
+  await fs.mkdir(reportDir, { recursive: true });
 
-  const spiderId = spiderRes.data.scan;
-  if (spiderId == null) {
-    throw new Error("Spider did not start. Check target URL and ZAP logs.");
-  }
+  await ensureImage();
 
-  console.log("[ZAP] Spider started, polling progress...");
-  let spiderProgress = 0;
-  const spiderPhaseStart = Date.now();
-  while (spiderProgress < 100) {
-    if (useTimeCap && Date.now() - spiderPhaseStart > spiderMaxMs) {
-      console.log(
-        "[ZAP] Spider phase time limit reached, proceeding with current crawl."
-      );
-      break;
+  const reportName = "zap-raw-report.json";
+
+  const container = await docker.createContainer({
+
+    Image: ZAP_IMAGE,
+
+    Cmd: [
+      "zap-full-scan.py",
+      "-t",
+      targetUrl,
+      "-J",
+      `/zap/wrk/${reportName}`,
+      "-I"
+    ],
+
+    HostConfig: {
+      Binds: [`${path.resolve(reportDir)}:/zap/wrk`],
     }
-    await sleep(POLL_INTERVAL);
+
+  });
+
+  const containerId = container.id;
+
+  console.log("[ZAP] container created", containerId);
+
+  activeScans.set(scanId, {
+    containerId,
+    status: "running"
+  });
+
+  console.log("[ZAP] activeScans =", activeScans);
+
+  await container.start();
+
+  console.log("[ZAP] scan started", scanId);
+
+  /*
+  run in background
+  */
+  container.wait().then(async () => {
+
+    console.log("[ZAP] scan finished", scanId);
+
     try {
-      const statusRes = await axios.get(
-        `${ZAP_BASE}/JSON/spider/view/status/`,
-        { params: zapParams({ scanId: spiderId }) }
-      );
-      spiderProgress = Number(statusRes.data.status) || 0;
-      if (spiderProgress < 100) {
-        console.log(`[ZAP] Spider: ${spiderProgress}%`);
-      }
-    } catch (err) {
-      wrapZapError(err, "Spider status failed");
-    }
-  }
-  console.log("[ZAP] Spider phase done (100% or time limit).");
 
-  // 2. Active Scan
-  let ascanRes;
-  try {
-    ascanRes = await axios.get(
-      `${ZAP_BASE}/JSON/ascan/action/scan/`,
-      { params: zapParams({ url: targetUrl, recurse: true }) }
-    );
-  } catch (err) {
-    wrapZapError(err, "Active scan start failed");
-  }
+      const reportPath =
+        path.join(reportDir, reportName);
 
-  const ascanId = ascanRes.data.scan;
-  if (ascanId == null) {
-    throw new Error("Active scan did not start. Check target URL and ZAP logs.");
-  }
+      const content =
+        await fs.readFile(reportPath, "utf8");
 
-  console.log("[ZAP] Active scan started, polling progress...");
-  let ascanProgress = 0;
-  const ascanPhaseStart = Date.now();
-  while (ascanProgress < 100) {
-    if (useTimeCap && Date.now() - ascanPhaseStart > ascanMaxMs) {
+      const alerts =
+        extractAlerts(JSON.parse(content));
+
       console.log(
+        "[ZAP] alerts:",
+        alerts.length
+      );
+
+    } catch {}
+
+    try {
+      await container.remove({ force: true });
+    } catch {}
+
+    activeScans.delete(scanId);
+
+    console.log("[ZAP] removed from activeScans");
+
+  });
+
+  return containerId;
+}
+
+
+async function stopZapScan(scanId) {
+
+  console.log("STOP requested:", scanId);
+  console.log("activeScans now:", activeScans);
+
+  const scan = activeScans.get(scanId);
+
+  if (!scan)
+    throw new Error(
+      "Scan not running"
+    );
+
+  const container =
+    docker.getContainer(scan.containerId);
+
+  try {
+    await container.stop({ t: 0 });
+  } catch {}
+
+  try {
+    await container.remove({ force: true });
+  } catch {}
+
+  activeScans.delete(scanId);
+
+  console.log("STOP successful");
+
+}
+
+
+module.exports = {
+  runZapScan,
+  stopZapScan
+};
         "[ZAP] Active scan phase time limit reached, fetching results."
       );
       break;

@@ -8,6 +8,8 @@ const router = express.Router();
 
 router.post("/scan/dast", runDastScan);
 
+router.post("/scan/dast/:scanId/stop",cancelDastScan);
+
 router.post("/scan/sast", runSastScan);
 
 router.post("/scan/container", runContainerScan);

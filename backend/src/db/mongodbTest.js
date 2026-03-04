@@ -15,7 +15,7 @@ const testConnection = async () => {
             client_id: 'test_client',
             scan_id: 'test_scan',   
             scan_type: 'SAST', 
-            scan_status: 'pending',
+            scan_status: 'in_progress',
             report: { test: 'This is a test report' },
         });
         try{
