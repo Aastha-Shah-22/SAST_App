@@ -1,4 +1,4 @@
-const mongoose = require('mongoose');
+import mongoose from 'mongoose';
 
 const vulReports = new mongoose.Schema({
     _id: mongoose.Schema.Types.ObjectId,
@@ -12,4 +12,6 @@ const vulReports = new mongoose.Schema({
     report: Object,
 })
 
-module.exports = mongoose.model('VulReport', vulReports);
+const VulReport = mongoose.model('VulReport', vulReports);
+
+export default VulReport;

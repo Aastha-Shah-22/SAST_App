@@ -1,7 +1,7 @@
-const express = require("express");
-const cors = require("cors");
+import express from 'express';
+import cors from 'cors';
+import scanRoutes from './routes/scan_routes.js';
 
-const scanRoutes = require("./routes/scan_routes");
 
 function createApp() {
   const app = express();

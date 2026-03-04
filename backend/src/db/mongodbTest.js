@@ -1,7 +1,10 @@
-require('dotenv').config();
-const mongoose = require('mongoose');
-const connectDB = require('./mongodbService.js');
-const VulReport = require('../model/schema.js');
+import dotenv from 'dotenv';
+import mongoose from 'mongoose';
+import VulReport from '../model/schema.js';
+
+dotenv.config();
+import connectDB from './mongodbService.js';
+
 
 const testConnection = async () => {
     try {
@@ -12,7 +15,7 @@ const testConnection = async () => {
             client_id: 'test_client',
             scan_id: 'test_scan',   
             scan_type: 'SAST', 
-            scan_status: 'in_progress',
+            scan_status: 'pending',
             report: { test: 'This is a test report' },
         });
         try{
@@ -23,7 +26,8 @@ const testConnection = async () => {
             console.error('Error saving test report:', err);
         }
         
-
+        await mongoose.disconnect();
+        console.log('Disconnected from MongoDB Atlas');
         process.exit(0);
     } catch (error) {
         console.error('MongoDB connection test failed:', error);
