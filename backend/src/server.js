@@ -1,6 +1,6 @@
 import connectDB from './db/mongodbService.js';
-
-const { createApp } = require("./app");
+import mongoose from 'mongoose';
+import createApp from './app.js';
 
 const PORT = process.env.PORT || 3000;
 
@@ -21,7 +21,6 @@ const startServer = async () => {
       server.close(async () => {
         console.log(' HTTP server closed');
 
-        const mongoose = require('mongoose');
         await mongoose.connection.close();
         console.log(' MongoDB connection closed');
 

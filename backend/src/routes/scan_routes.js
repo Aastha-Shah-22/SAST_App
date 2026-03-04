@@ -1,8 +1,8 @@
-const express = require("express");
-const { runDastScan } = require("../controllers/dastController");
-const { runSastScan } = require("../controllers/sastController");
-const { runContainerScan } = require("../controllers/containerController");
-const { runAppScan } = require("../controllers/appController");
+import express from "express";
+import { runDastScan } from "../controllers/dastController.js";
+import { runSastScan } from "../controllers/sastController.js";
+import { runContainerScan } from "../controllers/containerController.js";
+import { runAppScan } from "../controllers/appController.js";
 
 const router = express.Router();
 
@@ -14,4 +14,4 @@ router.post("/scan/container", runContainerScan);
 
 router.post("/scan/app", runAppScan);
 
-module.exports = router;
+export default router;

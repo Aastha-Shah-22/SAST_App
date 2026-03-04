@@ -1,4 +1,4 @@
-const VulReport = require('../model/schema')
+import VulReport from "../model/schema.js";
 
 let limit;
 
@@ -32,4 +32,4 @@ const addToQueue = async (dbId, scanTask) => {
     });
 };
 
-module.exports = { addToQueue };
+export { addToQueue };

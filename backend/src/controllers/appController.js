@@ -1,9 +1,15 @@
-const path = require("path");
-const fs = require("fs").promises;
-const util = require('util');
-const { exec } = require("child_process");
-const execPromise = util.promisify(exec);
-const cors = require("cors");
+import path from "path";
+import fs from "fs/promises";
+import { promisify } from "util";
+import { exec } from "child_process";
+import cors from "cors";
+import { fileURLToPath } from "url";
+import { dirname } from "path";
+
+const execPromise = promisify(exec);
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 async function runAppScan(req, res) {
   const apkPath = req?.file?.path;
@@ -56,6 +62,4 @@ async function runAppScan(req, res) {
   }
 }
 
-module.exports = {
-  runAppScan
-};
+export { runAppScan };

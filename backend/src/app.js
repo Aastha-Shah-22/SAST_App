@@ -1,8 +1,9 @@
 import express from 'express';
 import cors from 'cors';
+import dotenv from 'dotenv';
 import scanRoutes from './routes/scan_routes.js';
 
-
+dotenv.config();
 function createApp() {
   const app = express();
 
@@ -21,5 +22,4 @@ function createApp() {
   return app;
 }
 
-module.exports = { createApp };
-
+export default createApp ;

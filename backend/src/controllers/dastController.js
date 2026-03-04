@@ -1,8 +1,13 @@
-const path = require("path");
-const fs = require("fs").promises;
-const cors = require("cors");
+import path from "path";
+import fs from "fs/promises";
+import cors from "cors";
+import { runZapScan } from "../services/zapService.js";
+import { fileURLToPath } from "url";
+import { dirname } from "path";
 
-const { runZapScan } = require("../services/zapService");
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
 async function runDastScan(req, res) {
   const { url, quickScan } = req.body || {};
 
@@ -45,7 +50,5 @@ async function runDastScan(req, res) {
   }
 }
 
-module.exports = {
-  runDastScan,
-};
+export { runDastScan };
 

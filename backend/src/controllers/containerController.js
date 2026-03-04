@@ -1,11 +1,17 @@
-const path = require("path");
-const fs = require("fs").promises;
-const util = require('util');
-const { exec } = require("child_process");
-const execPromise = util.promisify(exec);
-const VulReport = require('../model/schema.js');
-const mongoose = require('mongoose');
-const { addToQueue } = require('./queue.js');
+import path from "path";
+import fs from "fs/promises";
+import { promisify } from "util";
+import { exec } from "child_process";
+import VulReport from "../model/schema.js";
+import mongoose from "mongoose";
+import { addToQueue } from "./queue.js";
+import { fileURLToPath } from "url";
+import { dirname } from "path";
+
+const execPromise = promisify(exec);
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 async function runContainerScan(req, res) {
   const { clientName, imageName } = req.body;
@@ -92,4 +98,4 @@ addToQueue(dbId, scanTask);
 
 };
 
-module.exports = { runContainerScan };
+export { runContainerScan };

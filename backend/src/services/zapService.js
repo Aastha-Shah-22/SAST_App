@@ -1,4 +1,4 @@
-const axios = require("axios");
+import axios from "axios";
 
 // ZAP configuration and timeouts
 const ZAP_BASE = process.env.ZAP_BASE_URL || "http://localhost:8080";
@@ -144,5 +144,5 @@ async function runZapScan(targetUrl, options = {}) {
   return Array.isArray(alerts) ? alerts : [];
 }
 
-module.exports = { runZapScan };
+export { runZapScan };
 
