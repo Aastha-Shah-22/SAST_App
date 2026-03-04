@@ -1,6 +1,6 @@
-const path = require("path");
-const fs = require("fs").promises;
-const Docker = require("dockerode");
+import Docker from "dockerode";
+import fs from "fs/promises";
+import path from "path";
 
 const docker = new Docker();
 
@@ -30,8 +30,7 @@ async function ensureImage() {
 
     console.log("[ZAP] Image pulled");
   }
-import axios from "axios";
-
+}
 // ZAP configuration and timeouts
 const ZAP_BASE = process.env.ZAP_BASE_URL || "http://localhost:8080";
 const ZAP_API_KEY = process.env.ZAP_API_KEY || "";
@@ -178,48 +177,7 @@ async function stopZapScan(scanId) {
 
 }
 
-
-module.exports = {
+export {
   runZapScan,
   stopZapScan
 };
-        "[ZAP] Active scan phase time limit reached, fetching results."
-      );
-      break;
-    }
-    await sleep(POLL_INTERVAL);
-    try {
-      const statusRes = await axios.get(
-        `${ZAP_BASE}/JSON/ascan/view/status/`,
-        { params: zapParams({ scanId: ascanId }) }
-      );
-      ascanProgress = Number(statusRes.data.status) || 0;
-      if (ascanProgress < 100) {
-        console.log(`[ZAP] Active scan: ${ascanProgress}%`);
-      }
-    } catch (err) {
-      wrapZapError(err, "Active scan status failed");
-    }
-  }
-  console.log("[ZAP] Active scan phase done (100% or time limit).");
-
-  // 3. Fetch results
-  console.log("[ZAP] Fetching report...");
-  let alertsRes;
-  try {
-    alertsRes = await axios.get(
-      `${ZAP_BASE}/JSON/core/view/alerts/`,
-      { params: zapParams({ baseurl: targetUrl }) }
-    );
-  } catch (err) {
-    wrapZapError(err, "Fetch alerts failed");
-  }
-
-  const alerts = alertsRes.data?.alerts;
-  const count = Array.isArray(alerts) ? alerts.length : 0;
-  console.log(`[ZAP] Done. Alerts: ${count}`);
-  return Array.isArray(alerts) ? alerts : [];
-}
-
-export { runZapScan };
-
